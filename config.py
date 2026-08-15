@@ -15,7 +15,7 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 # CITY (default assumption: Delhi, India -- change these 3 lines for another city)
 # ---------------------------------------------------------------------------
-CITY_NAME = "Auckland"
+CITY_NAME = "Delhi"
 LATITUDE = -36.8485
 LONGITUDE = 174.7633
 OPENAQ_RADIUS_METERS = 25000  # search radius around the coordinates for OpenAQ stations

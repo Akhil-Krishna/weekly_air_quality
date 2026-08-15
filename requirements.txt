@@ -9,3 +9,4 @@ streamlit>=1.30.0
 plotly>=5.18.0
 python-dateutil>=2.8.2
 python-dotenv
+pandas
