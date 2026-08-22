@@ -114,3 +114,74 @@ Sample rows:
 2025-07-31 04:00:00            25.3  38.5 108.386935 Unhealthy (Sensitive Groups)
 
 Done -- merged_clean.csv saved to data/processed/delhi/
+
+
+
+## Week 4 tasks
+
+### Auckland 
+=== BEFORE: merged_clean.csv (week 3's output) ===
+Rows: 4083  |  Columns: 11
+Column names: ['datetime', 'temperature_2m', 'relative_humidity_2m', 'surface_pressure', 'wind_speed_10m', 'wind_direction_10m', 'precipitation', 'pm25', 'source', 'aqi', 'risk_category']
+
+=== RUNNING feature_engineering.py ===
+Built 57 columns x 4042 rows -> \data\processed\auckland\features.csv
+
+=== AFTER: features.csv ===
+Rows: 4042  |  Columns: 57
+
+46 new engineered feature columns added, e.g.:
+  - is_weekend
+  - hour_sin
+  - hour_cos
+  - temperature_2m_roll_24h_mean
+  - temperature_2m_roll_24h_std
+  - relative_humidity_2m_roll_24h_mean
+  - relative_humidity_2m_roll_24h_std
+  - surface_pressure_roll_24h_mean
+
+=== Sample rows showing a few engineered features ===
+           datetime risk_category  hour  is_weekend  pm25_roll_24h_mean  pm25_lag_24h
+2025-08-01 17:00:00          Good    17           0            3.242420         3.120
+2025-08-01 18:00:00          Good    18           0            3.218878         2.790
+2025-08-01 19:00:00          Good    19           0            3.235336         2.700
+2025-08-01 20:00:00          Good    20           0            3.354920         1.465
+2025-08-01 21:00:00          Good    21           0            3.487836         1.675
+
+Note: 4083 -> 4042 rows -- the drop is expected: rolling/lag features need prior history, so the first ~7 days of the series (before a full week of lookback exists) are dropped.
+
+Done -- features.csv saved to data/processed/auckland/
+
+### Delhi
+
+=== BEFORE: merged_clean.csv (week 3's output) ===
+Rows: 5230  |  Columns: 13
+Column names: ['datetime', 'temperature_2m', 'relative_humidity_2m', 'surface_pressure', 'wind_speed_10m', 'wind_direction_10m', 'precipitation', 'pm25', 'pm10', 'no2', 'source', 'aqi', 'risk_category']
+
+=== RUNNING feature_engineering.py ===
+Built 69 columns x 5007 rows -> data\processed\delhi\features.csv
+
+=== AFTER: features.csv ===
+Rows: 5007  |  Columns: 69
+
+56 new engineered feature columns added, e.g.:
+  - is_weekend
+  - hour_sin
+  - hour_cos
+  - temperature_2m_roll_24h_mean
+  - temperature_2m_roll_24h_std
+  - relative_humidity_2m_roll_24h_mean
+  - relative_humidity_2m_roll_24h_std
+  - surface_pressure_roll_24h_mean
+
+=== Sample rows showing a few engineered features ===
+           datetime risk_category  hour  is_weekend  pm25_roll_24h_mean  pm25_lag_24h
+2025-08-01 19:00:00      Moderate    19           0           26.317708         17.25
+2025-08-01 20:00:00      Moderate    20           0           26.755208         18.00
+2025-08-01 21:00:00      Moderate    21           0           26.130208         30.00
+2025-08-01 22:00:00      Moderate    22           0           25.038542         42.00
+2025-08-01 23:00:00      Moderate    23           0           23.976042         42.00
+
+Note: 5230 -> 5007 rows -- the drop is expected: rolling/lag features need prior history, so the first ~7 days of the series (before a full week of lookback exists) are dropped.
+
+Done -- features.csv saved to data/processed/delhi/

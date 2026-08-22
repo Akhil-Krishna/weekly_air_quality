@@ -45,18 +45,10 @@ OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 OPEN_METEO_AQ_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 OPENAQ_BASE_URL = "https://api.openaq.org/v3"
 
-# OpenAQ now requires a free API key (register at https://explore.openaq.org/register)
-# Set it as an environment variable: export OPENAQ_API_KEY="your-key-here"
 OPENAQ_API_KEY = os.environ.get("OPENAQ_API_KEY", "")
 
 # ---------------------------------------------------------------------------
 # Air quality data source strategy
-#
-# OpenAQ = real ground-station measurements, but only where a physical station
-#          exists nearby (sparse in smaller NZ towns).
-# Open-Meteo Air Quality = free, no-key, model/satellite-based (CAMS reanalysis),
-#          works for ANY coordinate globally, and also returns a ready-made
-#          `us_aqi` field.
 # ---------------------------------------------------------------------------
 AQ_SOURCE_MODE = "openaq"    
 RUN_AQI_CROSSCHECK = False  
@@ -78,10 +70,7 @@ POLLUTANTS = ["pm25", "pm10", "no2"]
 # ---------------------------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# ---------------------------------------------------------------------------
-# All data/model paths are automatically namespaced under a per-city folder
-# (e.g. data/raw/delhi/, data/raw/auckland/) based on CITY_NAME above.
-# ---------------------------------------------------------------------------
+
 CITY_SLUG = CITY_NAME.strip().lower().replace(" ", "_")
 
 DATA_RAW_DIR = os.path.join(BASE_DIR, "data", "raw", CITY_SLUG)
