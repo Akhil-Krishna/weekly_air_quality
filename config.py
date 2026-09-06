@@ -50,8 +50,8 @@ OPENAQ_API_KEY = os.environ.get("OPENAQ_API_KEY", "")
 # ---------------------------------------------------------------------------
 # Air quality data source strategy
 # ---------------------------------------------------------------------------
-AQ_SOURCE_MODE = "openaq"    
-RUN_AQI_CROSSCHECK = False  
+AQ_SOURCE_MODE = "auto"    
+RUN_AQI_CROSSCHECK = True  
 OPEN_METEO_AQ_HOURLY_VARS = ["pm2_5", "pm10", "nitrogen_dioxide", "us_aqi"]
 
 WEATHER_HOURLY_VARS = [

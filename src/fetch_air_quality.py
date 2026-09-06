@@ -1,7 +1,23 @@
 """
 Fetch historical air quality data (PM2.5, PM10, NO2) from the OpenAQ v3 API.
 
-check: python -m src.fetch_air_quality
+IMPORTANT: As of the OpenAQ v3 API, a free API key is REQUIRED.
+Register at https://explore.openaq.org/register, then either:
+    export OPENAQ_API_KEY="your-key-here"
+or put it in a .env file (see .env.example) and load it before running.
+
+Docs: https://docs.openaq.org/
+
+Flow:
+    1. Find monitoring stations ("locations") near the target city coordinates.
+    2. For each location, list its sensors (one sensor per pollutant/parameter).
+    3. For each relevant sensor (pm25 / pm10 / no2), pull hourly measurements
+       for the requested date range.
+    4. Combine everything into one long dataframe, then pivot to wide format
+       (one column per pollutant) for merging with weather data.
+
+Usage:
+    python -m src.fetch_air_quality
 """
 
 import sys
@@ -73,8 +89,13 @@ def get_sensors_for_location(location):
 def fetch_sensor_measurements(sensor_id, start_date, end_date):
     """Pull hourly aggregated measurements for one sensor, paginated.
 
-     the OpenAQ v3 API requires full RFC3339 datetime strings
-    (e.g. "2026-07-01T00:00:00Z"), not bare dates ("2026-07-01")
+    NOTE: the OpenAQ v3 API requires full RFC3339 datetime strings
+    (e.g. "2026-07-01T00:00:00Z"), not bare dates ("2026-07-01") -- passing
+    date-only strings returns a 422 Unprocessable Entity on every request.
+
+    A short delay between requests is added proactively (rather than only
+    reacting after a 429) since sustained bursts are what trip rate limits
+    in the first place.
     """
     all_rows = []
     for chunk_start, chunk_end in chunk_date_range(start_date, end_date, chunk_days=90):
@@ -178,6 +199,25 @@ def main():
                 "config.py, or set AQ_SOURCE_MODE = 'auto' to fall back to "
                 "Open-Meteo Air Quality for this location."
             )
+
+    if df is None:
+        # Either AQ_SOURCE_MODE == "openmeteo" (forced), or "auto" with no
+        # OpenAQ stations nearby -- fall back to the model-based source.
+        from src.fetch_air_quality_openmeteo import fetch_air_quality_openmeteo_history
+        print("No OpenAQ ground station nearby (or OpenAQ forced off) -- "
+              "falling back to Open-Meteo Air Quality (model-based, works "
+              "for any coordinate).")
+        df = fetch_air_quality_openmeteo_history(
+            config.LATITUDE, config.LONGITUDE,
+            config.START_DATE, config.END_DATE,
+            config.OPEN_METEO_AQ_HOURLY_VARS,
+        )
+        df["source"] = "openmeteo_model"
+        # Drop the us_aqi column from the training data itself -- it's kept
+        # separately for the cross-check, not as a training feature (using a
+        # third party's AQI to predict our own AQI category would be circular).
+        if "us_aqi_openmeteo" in df.columns:
+            df = df.drop(columns=["us_aqi_openmeteo"])
 
     df.to_csv(config.AQ_RAW_PATH, index=False)
     print(f"Saved {len(df)} rows to {config.AQ_RAW_PATH} (source: {df['source'].iloc[0]})")

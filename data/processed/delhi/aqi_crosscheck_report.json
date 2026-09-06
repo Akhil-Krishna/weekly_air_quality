@@ -1,0 +1,9 @@
+{
+  "city": "Delhi",
+  "sample_window": "2026-08-15 to 2026-08-29",
+  "n_hours_compared": 360,
+  "mean_absolute_error": 36.18,
+  "correlation": 0.574,
+  "mean_our_aqi": 176.4,
+  "mean_openmeteo_us_aqi": 175.0
+}
