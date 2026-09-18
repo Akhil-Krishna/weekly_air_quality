@@ -18,6 +18,16 @@ load_dotenv()
 CITY_NAME = "Delhi"
 LATITUDE = 28.6139
 LONGITUDE = 77.2090
+
+# Registry of all cities the app can switch between (used by the Streamlit
+# city selector). Adding a city here does NOT fetch/train anything by
+# itself -- you still run the pipeline once per city via the 3 lines above.
+# This just lets the already-built app switch between cities that have
+# already been processed, without editing config.py or restarting.
+CITIES = {
+    "Delhi": {"lat": 28.6139, "lon": 77.2090},
+    "Auckland": {"lat": -36.8485, "lon": 174.7633},
+}
 OPENAQ_RADIUS_METERS = 25000  # search radius around the coordinates for OpenAQ stations
 OPENAQ_MAX_LOCATIONS = 6      # only pull the N nearest stations -- pulling all ~100 in a
                               # dense city like Delhi triggers rate limits for no real benefit
