@@ -1,5 +1,3 @@
-
-
 import sys
 sys.path.insert(0, ".")
 import json
@@ -40,7 +38,7 @@ def show_hybrid_source_and_crosscheck():
     print("PART 2: Hybrid data source + AQI cross-check (requires internet)")
     print("=" * 70)
     print(f"AQ_SOURCE_MODE is now: '{config.AQ_SOURCE_MODE}' "
-          "(was 'openaq'")
+          "(was 'openaq' through week 5)")
     print("This means: try OpenAQ first, and if no station is nearby, "
           "automatically fall back to Open-Meteo Air Quality (model-based, "
           "works for any coordinate) instead of failing.")

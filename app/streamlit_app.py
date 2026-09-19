@@ -1,15 +1,16 @@
 """
 Air Quality Risk Predictor -- Streamlit App
 
-Two views:
+Five tabs:
   - Historical: pick a past date/time, see actual weather + pollution +
     predicted risk vs. the real outcome.
   - Forecast: pulls live Open-Meteo forecast data and predicts upcoming risk,
     turning this into a genuine decision-support tool rather than a static
     dashboard.
-
-Run with:
-    streamlit run app/streamlit_app.py
+  - Explainability: which features actually drive the model's predictions.
+  - City Comparison: Delhi vs. Auckland, real computed statistics.
+  - Allergy Comparison: how this project's approach compares to MetService's
+    pollen forecasting, and why a live data comparison isn't possible.
 """
 
 import sys
@@ -39,7 +40,7 @@ RISK_COLORS = {
     "Hazardous": "#7E0023",
 }
 
-st.set_page_config(page_title="Air Quality Risk Predictor", page_icon="\U0001F32B", layout="wide")
+st.set_page_config(page_title="Air Quality Risk Predictor", layout="wide")
 
 
 def get_city_paths(city_slug):
@@ -126,11 +127,11 @@ def predict_risk(model, scaler, le, feature_cols, row_df):
 # ---------------------------------------------------------------------------
 # Header + City selector
 # ---------------------------------------------------------------------------
-st.title("\U0001F32B Air Quality Risk Predictor")
+st.title("Air Quality Risk Predictor")
 
 city_names = list(config.CITIES.keys())
 default_idx = city_names.index(config.CITY_NAME) if config.CITY_NAME in city_names else 0
-selected_city = st.selectbox("\U0001F30D City", city_names, index=default_idx)
+selected_city = st.selectbox("City", city_names, index=default_idx)
 city_slug = selected_city.strip().lower().replace(" ", "_")
 lat = config.CITIES[selected_city]["lat"]
 lon = config.CITIES[selected_city]["lon"]
@@ -172,8 +173,8 @@ with st.sidebar:
                    "what its real data looks like instead.")
 
 tab_hist, tab_forecast, tab_explain, tab_compare, tab_allergy = st.tabs([
-    " Historical View", " Forecast View", " Explainability",
-    " City Comparison", " Allergy Comparison (vs MetService)",
+    "Historical View", "Forecast View", "Explainability",
+    "City Comparison", "Allergy Comparison (vs MetService)",
 ])
 
 # ---------------------------------------------------------------------------
@@ -513,12 +514,11 @@ with tab_allergy:
     st.dataframe(season_table, use_container_width=True, hide_index=True)
 
     st.markdown("#### What this project offers instead")
-    if has_model or (compute_city_summary(city_slug) is not None):
-        summary = compute_city_summary(city_slug)
-        if summary:
-            st.write(
-                f"For **{selected_city}** right now: mean AQI of **{summary['mean_aqi']:.1f}** "
-                f"across {summary['rows']} hourly readings -- a pollution-based risk signal "
-                "MetService's pollen forecast doesn't cover at all, and a genuinely "
-                "complementary (not competing) piece of environmental health information."
-            )
+    summary = compute_city_summary(city_slug)
+    if summary:
+        st.write(
+            f"For **{selected_city}** right now: mean AQI of **{summary['mean_aqi']:.1f}** "
+            f"across {summary['rows']} hourly readings -- a pollution-based risk signal "
+            "MetService's pollen forecast doesn't cover at all, and a genuinely "
+            "complementary (not competing) piece of environmental health information."
+        )
