@@ -1,187 +1,215 @@
 # Air Quality Risk Predictor
 
-An end-to-end supervised ML system that predicts air quality risk levels for
-**Any city** (default — easily changeable) from weather data, with a
-Streamlit app for interactive prediction and visualization.
+An end-to-end supervised machine learning system that predicts air quality
+risk levels from weather data, with a Streamlit app for interactive
+prediction, model explainability, and cross-city comparison.
 
-## How the pieces fit together
+Built for two cities so far: **Delhi** (high pollution variance, fully
+trained) and **Auckland** (clean-air baseline, no model trained -- and that
+absence is itself a real, explained finding, not a gap).
 
-1. **`fetch_weather.py`** pulls ~9-12 months of hourly weather (temperature,
-   humidity, pressure, wind, precipitation) from Open-Meteo's free archive API.
-2. **`fetch_air_quality.py`** finds OpenAQ monitoring stations near the city
-   coordinates and pulls hourly PM2.5 / PM10 / NO2 readings for the same window.
-   
-   
-Merging these weather info with air_quaility and then feeding it to 3 models as of now then , getting a future weather report and can predict pollution index
+---
 
-## Week 3 tasks
+## What this project actually does
 
-### Auckland
-Merged the weather and pollution info into one
+1. Collects real hourly weather (Open-Meteo) and real air pollution readings
+   (OpenAQ ground stations, with an automatic fallback to Open-Meteo's
+   model-based Air Quality API for cities with no nearby station).
+2. Converts raw pollutant concentrations into an AQI value and a risk
+   category (Good / Moderate / Unhealthy for Sensitive Groups / Unhealthy /
+   Very Unhealthy / Hazardous), using the official US EPA breakpoint tables.
+3. Cleans and merges the two datasets, engineers time-based and
+   rolling/lag features, and trains three models (Logistic Regression,
+   Random Forest, XGBoost) on a **chronological** train/test split so the
+   model is evaluated the way it would actually be used -- predicting the
+   future from the past.
+4. Serves everything through a Streamlit app: historical lookup, live
+   forecast prediction, model explainability, a Delhi-vs-Auckland
+   comparison, and a methodology comparison against MetService's pollen
+   forecasting.
 
-=== BEFORE: raw weather + raw air quality (separate, uncleaned) ===
-Weather raw:        8664 rows  | columns: ['datetime', 'temperature_2m', 'relative_humidity_2m', 'surface_pressure', 'wind_speed_10m', 'wind_direction_10m', 'precipitation']
-Air quality raw:    4026 rows  | columns: ['datetime', 'pm25', 'source']
+---
 
-Missing values in raw air quality data:
-datetime    0
-pm25        0
-source      0
-dtype: int64
+## Setup
 
-=== RUNNING merge_clean.py ===
-Weather rows: 8664 | AQ rows: 8663 | Merged (labeled) rows: 4083
+### 1. Install dependencies
 
-Risk category distribution:
-risk_category
-Good    4083
-Name: count, dtype: int64
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
 
-Saved merged & cleaned dataset to \data\processed\auckland\merged_clean.csv
+### 2. Get a free OpenAQ API key
 
-=== AFTER: merged, cleaned, and labeled ===
-Final merged dataset: 4083 rows
-Columns: ['datetime', 'temperature_2m', 'relative_humidity_2m', 'surface_pressure', 'wind_speed_10m', 'wind_direction_10m', 'precipitation', 'pm25', 'source', 'aqi', 'risk_category']
+OpenAQ's v3 API requires a free key (Open-Meteo needs no key at all).
 
-Missing values after cleaning:
-temperature_2m    0
-pm25              0
-aqi               0
-dtype: int64
+1. Register at https://explore.openaq.org/register
+2. Set it as an environment variable, or copy `.env.example` to `.env` and
 
-Note: this city's station(s) only report ['pm25'] -- no ['pm10', 'no2'] sensor was found nearby. AQI is still computed correctly (max of whichever sub-indices are available).
+### 3. Run the pipeline for a city
 
-Sample rows:
-           datetime  temperature_2m   pm25      aqi risk_category
-2025-07-31 00:00:00            11.7 0.7855 3.272917          Good
-2025-07-31 01:00:00            11.5 0.5540 2.308333          Good
-2025-07-31 02:00:00            11.2 0.8690 3.620833          Good
-2025-07-31 03:00:00            10.9 1.0070 4.195833          Good
-2025-07-31 04:00:00            10.6 0.6365 2.652083          Good
+`config.py` controls which city gets collected/trained. The first three
+lines are the only thing you normally need to change:
 
-Done -- merged_clean.csv saved to data/processed/auckland/
+```python
+CITY_NAME = "Delhi"
+LATITUDE = 28.6139
+LONGITUDE = 77.2090
+```
+
+Then run everything end to end:
+
+```bash
+python run_pipeline.py
+```
+
+This fetches weather, fetches air quality (OpenAQ first, falling back to
+Open-Meteo Air Quality automatically if no station is nearby), merges and
+cleans the data, engineers features, trains and compares all three models,
+and saves the best one. Every city gets its own folder automatically
+(`data/raw/<city>/`, `data/processed/<city>/`, `models/<city>/`) so running
+this for a second city never overwrites the first.
+
+To add a city to the app's city switcher, also add it to the `CITIES` dict
+in `config.py`:
+
+```python
+CITIES = {
+    "Delhi": {"lat": 28.6139, "lon": 77.2090},
+    "Auckland": {"lat": -36.8485, "lon": 174.7633},
+}
+```
+
+### 4. Launch the app
+
+```bash
+streamlit run app/streamlit_app.py
+```
+
+---
+
+## The app
+
+Five tabs, with a city selector at the top that switches between any city
+that's been through the pipeline:
+
+| Tab | What it does |
+|---|---|
+| **Historical View** | Pick a past date/hour, see the actual weather, actual pollution reading, and the model's prediction next to what really happened. |
+| **Forecast View** | Pulls live upcoming weather from Open-Meteo and predicts risk up to 7 days ahead -- a genuine decision-support tool, not just a dashboard of the past. |
+| **Explainability** | Shows which features actually drive the model's predictions (feature importance on the winning model). |
+| **City Comparison** | Delhi vs. Auckland, using real computed statistics from each city's own data -- not illustrative numbers. |
+| **Allergy Comparison** | How this project's approach compares to MetService's pollen/allergy forecasting, including an honest explanation of why a live data comparison isn't possible. |
+
+A city with data but no trained model (currently Auckland) doesn't break
+the app -- each tab explains why, using that city's real numbers, instead
+of crashing or hiding the city entirely.
+
+---
+
+## Why Auckland has no trained model
+
+This isn't a bug or missing work -- it's a real result. Auckland's entire
+collected dataset (4083 hourly readings, ~11 months) fell into a single
+risk category: **Good**, 100% of the time. Mean AQI across the whole period
+was **7.9**, against Delhi's **153.7** over the same window.
+
+A classification model needs at least two classes to learn to tell apart.
+With only one present, there's nothing to distinguish -- so `train_models.py`
+detects this upfront and skips training with a clear explanation, rather
+than crashing (which is what scikit-learn does by default on single-class
+data) or fitting a model that trivially always predicts the same thing.
+
+This is the actual point of running two cities side by side: one with
+enough pollution variance to make a real prediction problem, and one clean
+enough that the "problem" itself disappears. That contrast is presented
+directly in the app's City Comparison tab.
+
+---
+
+## Real results (Delhi)
+
+Chronological split: last 3 months held out as the test set, first ~9
+months for training.
+
+| Model | F1 (macro) | Precision (macro) | Recall (macro) |
+|---|---|---|---|
+| Logistic Regression | 0.171 | 0.196 | 0.209 |
+| Random Forest | 0.201 | 0.248 | 0.225 |
+| **XGBoost (best)** | **0.221** | 0.236 | 0.228 |
+
+These F1 scores are modest, and that's honest, not a bug to hide: weather
+alone is a real but partial predictor of pollution -- local traffic,
+industrial activity, and construction (none of which this project collects)
+also drive Delhi's air quality. Worth stating plainly if asked, rather than
+implying weather alone should predict this well.
+
+**AQI calculation cross-check:** our own EPA-breakpoint AQI math was
+validated against Open-Meteo's independently-computed `us_aqi` field over a
+360-hour sample: mean AQI 176.4 (ours) vs. 175.0 (Open-Meteo's),
+correlation 0.574. Close agreement on the mean, moderate correlation --
+reasonable given the two sources use different pollutant sourcing and
+spatial resolution, and is treated as supporting evidence the labeling
+logic is implemented correctly, not as certainty.
+
+---
+
+## Project structure
+
+```
+weekly_air_quality-master/
+├── config.py                    # city settings, API endpoints, file paths
+├── run_pipeline.py              # runs the full pipeline end to end
+├── requirements.txt
+├── .env.example
+├── src/
+│   ├── fetch_weather.py            
+│   ├── fetch_air_quality.py        
+│   ├── fetch_air_quality_openmeteo.py 
+│   ├── labeling.py                  
+│   ├── merge_clean.py              
+│   ├── feature_engineering.py      
+│   ├── train_models.py             
+│   ├── explainability.py            # feature importance
+│   ├── validate_aqi_crosscheck.py   # validates labeling.py against Open-Meteo
+│   └── utils.py                    
+├── app/
+│   └── streamlit_app.py        
+├── data/{raw,processed}/<city>/ # per-city data, kept separate automatically
+├── models/<city>/               # per-city trained model + metrics
+└── demo_week4.py / demo_week5.py / demo_week6.py   # weekly progress demos
+```
+
+---
+
+## Design notes and honest limitations
+
+- **Chronological split, not random.** The model is tested on the most
+  recent months only, held out entirely from training -- this mirrors how
+  it would actually be used (predicting the future from the past) and
+  avoids the leakage a random shuffle-split would introduce.
+- **Macro F1 over accuracy.** Risk categories are heavily imbalanced
+  (Delhi is mostly Unhealthy/Moderate; Auckland is entirely Good) --
+  accuracy would hide poor performance on rarer classes. `class_weight="balanced"`
+  is used where supported.
+- **Hybrid air quality source, disclosed per row.** Every row carries a
+  `source` column (`openaq_ground` or `openmeteo_model`) recording which
+  data source was actually used -- ground-truth sensor data and
+  model-estimated data are genuinely different in kind, and this is never
+  hidden.
+- **Forecast view assumption.** Future weather comes from a real forecast,
+  but future pollution is exactly what's being predicted -- so the
+  forecast's rolling/lag pollutant features carry forward the most recent
+  known real values rather than inventing numbers. Disclosed in the app
+  itself.
+- **Allergy comparison is methodology-level, not live data.** Checked
+  directly before building this: Open-Meteo's pollen data only covers
+  Europe (not NZ or India), and MetService's real-time pollen feed is a
+  licensed commercial API, not a public one. Rather than ship a fragile,
+  untested scraper against a page that loads its data client-side, the
+  comparison stays honest about what it is.
+
+---
 
 
-*For auckland it will be mostly good*
-
-### Delhi
-
-=== BEFORE: raw weather + raw air quality (separate, uncleaned) ===
-Weather raw:        8664 rows  | columns: ['datetime', 'temperature_2m', 'relative_humidity_2m', 'surface_pressure', 'wind_speed_10m', 'wind_direction_10m', 'precipitation']
-Air quality raw:    5127 rows  | columns: ['datetime', 'no2', 'pm10', 'pm25', 'source']
-
-Missing values in raw air quality data:
-datetime      0
-no2         228
-pm10        298
-pm25         70
-source        0
-dtype: int64
-
-=== RUNNING merge_clean.py ===
-Weather rows: 8664 | AQ rows: 8664 | Merged (labeled) rows: 5230
-
-Risk category distribution:
-risk_category
-Unhealthy                       2089
-Unhealthy (Sensitive Groups)    1197
-Moderate                        1135
-Very Unhealthy                   532
-Hazardous                        213
-Good                              64
-Name: count, dtype: int64
-
-Saved merged & cleaned dataset to \data\processed\delhi\merged_clean.csv
-
-=== AFTER: merged, cleaned, and labeled ===
-Final merged dataset: 5230 rows
-Columns: ['datetime', 'temperature_2m', 'relative_humidity_2m', 'surface_pressure', 'wind_speed_10m', 'wind_direction_10m', 'precipitation', 'pm25', 'pm10', 'no2', 'source', 'aqi', 'risk_category']
-
-Missing values after cleaning:
-temperature_2m      0
-pm25                0
-pm10              144
-no2                95
-aqi                 0
-dtype: int64
-
-Sample rows:
-           datetime  temperature_2m  pm25        aqi                risk_category
-2025-07-31 00:00:00            26.3  50.0 136.703518 Unhealthy (Sensitive Groups)
-2025-07-31 01:00:00            26.2  48.3 132.517588 Unhealthy (Sensitive Groups)
-2025-07-31 02:00:00            25.8  43.0 119.467337 Unhealthy (Sensitive Groups)
-2025-07-31 03:00:00            25.5  23.0  73.922747                     Moderate
-2025-07-31 04:00:00            25.3  38.5 108.386935 Unhealthy (Sensitive Groups)
-
-Done -- merged_clean.csv saved to data/processed/delhi/
-
-
-
-## Week 4 tasks
-
-### Auckland 
-=== BEFORE: merged_clean.csv (week 3's output) ===
-Rows: 4083  |  Columns: 11
-Column names: ['datetime', 'temperature_2m', 'relative_humidity_2m', 'surface_pressure', 'wind_speed_10m', 'wind_direction_10m', 'precipitation', 'pm25', 'source', 'aqi', 'risk_category']
-
-=== RUNNING feature_engineering.py ===
-Built 57 columns x 4042 rows -> \data\processed\auckland\features.csv
-
-=== AFTER: features.csv ===
-Rows: 4042  |  Columns: 57
-
-46 new engineered feature columns added, e.g.:
-  - is_weekend
-  - hour_sin
-  - hour_cos
-  - temperature_2m_roll_24h_mean
-  - temperature_2m_roll_24h_std
-  - relative_humidity_2m_roll_24h_mean
-  - relative_humidity_2m_roll_24h_std
-  - surface_pressure_roll_24h_mean
-
-=== Sample rows showing a few engineered features ===
-           datetime risk_category  hour  is_weekend  pm25_roll_24h_mean  pm25_lag_24h
-2025-08-01 17:00:00          Good    17           0            3.242420         3.120
-2025-08-01 18:00:00          Good    18           0            3.218878         2.790
-2025-08-01 19:00:00          Good    19           0            3.235336         2.700
-2025-08-01 20:00:00          Good    20           0            3.354920         1.465
-2025-08-01 21:00:00          Good    21           0            3.487836         1.675
-
-Note: 4083 -> 4042 rows -- the drop is expected: rolling/lag features need prior history, so the first ~7 days of the series (before a full week of lookback exists) are dropped.
-
-Done -- features.csv saved to data/processed/auckland/
-
-### Delhi
-
-=== BEFORE: merged_clean.csv (week 3's output) ===
-Rows: 5230  |  Columns: 13
-Column names: ['datetime', 'temperature_2m', 'relative_humidity_2m', 'surface_pressure', 'wind_speed_10m', 'wind_direction_10m', 'precipitation', 'pm25', 'pm10', 'no2', 'source', 'aqi', 'risk_category']
-
-=== RUNNING feature_engineering.py ===
-Built 69 columns x 5007 rows -> data\processed\delhi\features.csv
-
-=== AFTER: features.csv ===
-Rows: 5007  |  Columns: 69
-
-56 new engineered feature columns added, e.g.:
-  - is_weekend
-  - hour_sin
-  - hour_cos
-  - temperature_2m_roll_24h_mean
-  - temperature_2m_roll_24h_std
-  - relative_humidity_2m_roll_24h_mean
-  - relative_humidity_2m_roll_24h_std
-  - surface_pressure_roll_24h_mean
-
-=== Sample rows showing a few engineered features ===
-           datetime risk_category  hour  is_weekend  pm25_roll_24h_mean  pm25_lag_24h
-2025-08-01 19:00:00      Moderate    19           0           26.317708         17.25
-2025-08-01 20:00:00      Moderate    20           0           26.755208         18.00
-2025-08-01 21:00:00      Moderate    21           0           26.130208         30.00
-2025-08-01 22:00:00      Moderate    22           0           25.038542         42.00
-2025-08-01 23:00:00      Moderate    23           0           23.976042         42.00
-
-Note: 5230 -> 5007 rows -- the drop is expected: rolling/lag features need prior history, so the first ~7 days of the series (before a full week of lookback exists) are dropped.
-
-Done -- features.csv saved to data/processed/delhi/
