@@ -44,24 +44,76 @@ def global_feature_importance(model, feature_cols, top_n=15):
     return imp_df
 
 
-def shap_explain(model, X_background, X_instance, feature_cols, max_display=10):
-    """Compute SHAP values for a single instance (or small batch).
+def explain_single_prediction(model, X_instance_scaled, feature_cols, predicted_class_idx, top_n=10):
+    """
+    Compute a SHAP explanation for ONE prediction (one row), for the specific
+    class the model predicted, and return a clean, consistent DataFrame --
+    regardless of which shape the installed SHAP version happens to return.
 
-    Uses TreeExplainer for tree models (fast, exact) and falls back to
-    KernelExplainer for other model types (slower, sampled).
+    SHAP's return shape for multi-class tree models has genuinely changed
+    across library versions:
+      - older versions: a list of (n_instances, n_features) arrays, one per class
+      - newer versions: a single (n_instances, n_features, n_classes) array
+      - binary/regression: a single (n_instances, n_features) array, no class axis
+    This function normalizes all three into one flat per-feature result so
+    callers (the app) never need to know which shape they got.
+
+    Returns a DataFrame with columns: feature, shap_value, abs_shap_value,
+    sorted by impact (most influential first).
+
+    Raises RuntimeError with a clear message if the model type isn't
+    supported or the SHAP output shape is unrecognized -- callers should
+    catch this and show it to the user rather than let the app crash.
     """
     import shap
 
     model_type = type(model).__name__
-    if model_type in ("RandomForestClassifier", "XGBClassifier"):
-        explainer = shap.TreeExplainer(model)
-        shap_values = explainer.shap_values(X_instance)
-    else:
-        background = shap.sample(X_background, min(50, len(X_background)))
-        explainer = shap.KernelExplainer(model.predict_proba, background)
-        shap_values = explainer.shap_values(X_instance, nsamples=100)
+    if model_type not in ("RandomForestClassifier", "XGBClassifier", "GradientBoostingClassifier"):
+        raise RuntimeError(
+            f"Per-prediction SHAP explanation isn't supported for model type "
+            f"'{model_type}' -- only tree-based models (Random Forest, XGBoost) "
+            "are handled here."
+        )
 
-    return shap_values
+    explainer = shap.TreeExplainer(model)
+    raw = explainer.shap_values(X_instance_scaled)
+
+    if isinstance(raw, list):
+        # Older SHAP: list of per-class arrays, each (n_instances, n_features)
+        if predicted_class_idx >= len(raw):
+            raise RuntimeError(
+                f"SHAP returned {len(raw)} class arrays but predicted class "
+                f"index was {predicted_class_idx} -- mismatch with the model's "
+                "known classes."
+            )
+        row_values = np.asarray(raw[predicted_class_idx])[0]
+    else:
+        arr = np.asarray(raw)
+        if arr.ndim == 3:
+            # Newer SHAP: (n_instances, n_features, n_classes)
+            if predicted_class_idx >= arr.shape[2]:
+                raise RuntimeError(
+                    f"SHAP output has {arr.shape[2]} classes but predicted "
+                    f"class index was {predicted_class_idx} -- mismatch with "
+                    "the model's known classes."
+                )
+            row_values = arr[0, :, predicted_class_idx]
+        elif arr.ndim == 2:
+            # Binary/regression: (n_instances, n_features), no class axis
+            row_values = arr[0]
+        else:
+            raise RuntimeError(f"Unexpected SHAP output shape: {arr.shape}")
+
+    if len(row_values) != len(feature_cols):
+        raise RuntimeError(
+            f"SHAP returned {len(row_values)} values but there are "
+            f"{len(feature_cols)} features -- something doesn't line up."
+        )
+
+    result = pd.DataFrame({"feature": feature_cols, "shap_value": row_values})
+    result["abs_shap_value"] = result["shap_value"].abs()
+    result = result.sort_values("abs_shap_value", ascending=False).head(top_n).reset_index(drop=True)
+    return result
 
 
 def main():

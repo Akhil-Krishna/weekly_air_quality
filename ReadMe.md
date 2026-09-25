@@ -98,7 +98,7 @@ that's been through the pipeline:
 |---|---|
 | **Historical View** | Pick a past date/hour, see the actual weather, actual pollution reading, and the model's prediction next to what really happened. |
 | **Forecast View** | Pulls live upcoming weather from Open-Meteo and predicts risk up to 7 days ahead -- a genuine decision-support tool, not just a dashboard of the past. |
-| **Explainability** | Shows which features actually drive the model's predictions (feature importance on the winning model). |
+| **Explainability** | Shows which features actually drive the model's predictions (feature importance on the winning model).Per-prediction SHAP breakdowns -- why the model predicted a specific category for one specific date/hour -- are available as an expander inside the Historical View tab. |
 | **City Comparison** | Delhi vs. Auckland, using real computed statistics from each city's own data -- not illustrative numbers. |
 | **Allergy Comparison** | How this project's approach compares to MetService's pollen/allergy forecasting, including an honest explanation of why a live data comparison isn't possible. |
 

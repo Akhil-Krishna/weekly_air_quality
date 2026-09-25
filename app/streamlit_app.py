@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 from src.feature_engineering import add_time_features, add_rolling_features, add_lag_features
 from src.fetch_weather import fetch_weather_forecast
-from src.explainability import global_feature_importance
+from src.explainability import global_feature_importance, explain_single_prediction
 
 RISK_COLORS = {
     "Good": "#00A651",
@@ -264,6 +264,30 @@ with tab_hist:
                 else:
                     st.warning("Prediction did not match the actual outcome.")
 
+            with st.expander("Why did the model predict this? (per-prediction SHAP breakdown)"):
+                try:
+                    X_row_scaled = scaler.transform(nearest_row[feature_cols])
+                    predicted_class_idx = le.transform([pred_category])[0]
+                    shap_df = explain_single_prediction(
+                        model, X_row_scaled, feature_cols, predicted_class_idx, top_n=10
+                    )
+                    fig_shap = px.bar(
+                        shap_df.sort_values("shap_value"), x="shap_value", y="feature",
+                        orientation="h",
+                        title=f"Top factors behind this prediction of '{pred_category}'",
+                        color="shap_value", color_continuous_scale=["#E3312C", "#DDDDDD", "#00A651"],
+                    )
+                    st.plotly_chart(fig_shap, use_container_width=True)
+                    st.caption(
+                        "Positive values pushed the prediction toward this specific risk "
+                        "category for this specific date/hour; negative values pushed "
+                        "away from it. This is different from the Explainability tab's "
+                        "chart, which shows overall importance across all predictions, "
+                        "not this one row."
+                    )
+                except RuntimeError as e:
+                    st.info(f"Per-prediction explanation not available here: {e}")
+
             st.divider()
             st.subheader("Recent trend")
             window_days = st.slider("Trend window (days)", 3, 30, 14, key="hist_window")
@@ -396,9 +420,10 @@ with tab_explain:
 
         st.markdown(
             "This shows which weather and pollution-history variables most influence "
-            "the model's risk predictions overall. For a true per-prediction SHAP "
-            "breakdown, see `src/explainability.py::shap_explain`, which can be wired "
-            "into either tab above to explain one specific row/prediction."
+            "the model's risk predictions overall, averaged across every prediction. "
+            "For a per-prediction breakdown -- why the model predicted a specific risk "
+            "category for one specific date/hour -- see the 'Why did the model predict "
+            "this?' expander in the Historical View tab."
         )
 
 # ---------------------------------------------------------------------------
