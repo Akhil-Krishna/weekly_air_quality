@@ -15,9 +15,9 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 # CITY (default assumption: Delhi, India -- change these 3 lines for another city)
 # ---------------------------------------------------------------------------
-CITY_NAME = "Delhi"
-LATITUDE = 28.6139
-LONGITUDE = 77.2090
+CITY_NAME = "Hamilton"
+LATITUDE = -37.7833
+LONGITUDE = 175.2833
 
 # Registry of all cities the app can switch between (used by the Streamlit
 CITIES = {
@@ -55,7 +55,21 @@ OPEN_METEO_AQ_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 OPENAQ_BASE_URL = "https://api.openaq.org/v3"
 
 OPENAQ_API_KEY = os.environ.get("OPENAQ_API_KEY", "")
+# ---------------------------------------------------------------------------
+# Atmospore Pollen API (Allergy tab)
+# ---------------------------------------------------------------------------
+ATMOSPORE_API_KEY = os.environ.get("ATMOSPORE_API_KEY", "")
+ATMOSPORE_BASE_URL = "https://pollenapi.com/v1"
+ATMOSPORE_FORECAST_DAYS = 7
 
+# Free tier is 100 calls/day, shared across EVERY city this app supports
+# (one API key, not one budget per city). Keep a safety margin below the
+# real limit so our local count and Atmospore's server-side count can't
+# drift out of sync and trigger a surprise 429.
+ATMOSPORE_DAILY_CALL_BUDGET = 90
+
+
+#----------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # Air quality data source strategy
 # ---------------------------------------------------------------------------
@@ -80,11 +94,17 @@ POLLUTANTS = ["pm25", "pm10", "no2"]
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
+
+
 CITY_SLUG = CITY_NAME.strip().lower().replace(" ", "_")
 
 DATA_RAW_DIR = os.path.join(BASE_DIR, "data", "raw", CITY_SLUG)
 DATA_PROCESSED_DIR = os.path.join(BASE_DIR, "data", "processed", CITY_SLUG)
 MODELS_DIR = os.path.join(BASE_DIR, "models", CITY_SLUG)
+# Cache + call-ledger live here rather than under a per-city folder, since
+# the budget itself is shared across all cities.
+ATMOSPORE_CACHE_DIR = os.path.join(BASE_DIR, "data", "processed", "_pollen_cache")
+
 
 WEATHER_RAW_PATH = os.path.join(DATA_RAW_DIR, "weather_raw.csv")
 AQ_RAW_PATH = os.path.join(DATA_RAW_DIR, "air_quality_raw.csv")
@@ -101,5 +121,5 @@ METRICS_PATH = os.path.join(MODELS_DIR, "model_comparison.json")
 
 RANDOM_STATE = 42
 
-for _d in (DATA_RAW_DIR, DATA_PROCESSED_DIR, MODELS_DIR):
+for _d in (DATA_RAW_DIR, DATA_PROCESSED_DIR, MODELS_DIR,ATMOSPORE_CACHE_DIR):
     os.makedirs(_d, exist_ok=True)

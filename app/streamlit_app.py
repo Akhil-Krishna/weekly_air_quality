@@ -9,8 +9,9 @@ Five tabs:
     dashboard.
   - Explainability: which features actually drive the model's predictions.
   - City Comparison: Delhi vs. Auckland, real computed statistics.
-  - Allergy Comparison: how this project's approach compares to MetService's
-    pollen forecasting, and why a live data comparison isn't possible.
+  - Allergy Outlook: live species-level pollen forecasts (via the Atmospore
+    API, with a daily call budget + cache fallback), alongside an honest
+    comparison to MetService's own pollen forecasting.
 """
 
 import sys
@@ -30,6 +31,7 @@ import config
 from src.feature_engineering import add_time_features, add_rolling_features, add_lag_features
 from src.fetch_weather import fetch_weather_forecast
 from src.explainability import global_feature_importance, explain_single_prediction
+from src.fetch_pollen import get_pollen_forecast, get_call_budget_status, POLLEN_RISK_COLORS
 
 RISK_COLORS = {
     "Good": "#00A651",
@@ -112,6 +114,19 @@ def risk_badge(category):
         <div style="background-color:{color}; padding: 18px; border-radius: 12px;
                     text-align:center; color:white; font-size:22px; font-weight:700;">
             {category}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def pollen_risk_badge(risk_level):
+    color = POLLEN_RISK_COLORS.get(str(risk_level).lower(), "#999999")
+    st.markdown(
+        f"""
+        <div style="background-color:{color}; padding: 18px; border-radius: 12px;
+                    text-align:center; color:white; font-size:22px; font-weight:700;">
+            {str(risk_level).title()}
         </div>
         """,
         unsafe_allow_html=True,
@@ -485,50 +500,130 @@ with tab_compare:
         )
 
 # ---------------------------------------------------------------------------
-# TAB 5: Allergy Comparison (vs MetService)
+# TAB 5: Allergy Outlook (live pollen via Atmospore + MetService comparison)
 # ---------------------------------------------------------------------------
 with tab_allergy:
-    st.subheader("How this project compares to MetService's allergy forecasting")
+    st.subheader("Allergy Outlook")
     st.caption(
-        "MetService (New Zealand's national weather service) publishes a pollen/"
-        "allergy forecast. This tab compares that system to this project's "
-        "approach honestly -- including where a live data comparison genuinely "
-        "isn't possible, and why."
+        "Live species-level pollen forecasts from the Atmospore API, shown "
+        "alongside an honest comparison to MetService's own pollen "
+        "forecasting -- including why MetService's feed isn't something "
+        "this app can call directly."
     )
 
+    # -- Live pollen forecast -------------------------------------------------
+    st.markdown("#### Live pollen forecast")
+
+    budget = get_call_budget_status()
+    st.progress(
+        min(1.0, budget["calls_used_today"] / budget["calls_budget"]),
+        text=f"Atmospore calls used today: {budget['calls_used_today']} / "
+             f"{budget['calls_budget']} (shared across all cities, resets 00:00 UTC)",
+    )
+
+    force_refresh = st.button(
+        "🔄 Refresh now",
+        help="Spends one call from today's shared budget to get an "
+             "up-to-the-minute forecast, instead of reusing today's cache.",
+    )
+
+    with st.spinner(f"Getting pollen forecast for {selected_city}..."):
+        pollen = get_pollen_forecast(city_slug, lat, lon, force_refresh=force_refresh)
+
+    status = pollen["status"]
+    if status == "live":
+        st.success(f"Live data, fetched just now -- {pollen['calls_used_today']}/"
+                   f"{pollen['calls_budget']} calls used today.")
+    elif status == "cached":
+        st.info(f"{pollen['message']} (fetched {pollen['cache_age_hours']:.1f}h ago, "
+                f"{pollen['calls_used_today']}/{pollen['calls_budget']} calls used today.)")
+    elif status == "stale_cache":
+        st.warning(f"{pollen['message']} Last updated "
+                   f"{pollen['cache_age_hours']:.1f}h ago -- may not reflect "
+                   "today's conditions exactly.")
+    elif status == "limit_reached":
+        st.error(pollen["message"])
+    elif status == "error":
+        st.warning(pollen["message"])
+
+    if pollen["parsed"] is not None:
+        parsed = pollen["parsed"]
+        daily_df = pd.DataFrame(parsed["daily"])
+        daily_df["date"] = pd.to_datetime(daily_df["date"])
+        today_row = daily_df.iloc[0]
+
+        risk_col, chart_col = st.columns([1, 2])
+        with risk_col:
+            st.markdown("**Today's overall pollen risk**")
+            pollen_risk_badge(today_row["overall_risk"])
+            st.caption(f"Units: {parsed['units']}")
+            if parsed.get("generated_at"):
+                st.caption(f"Model run: {parsed['generated_at']}")
+
+        with chart_col:
+            cat_today = pd.DataFrame({
+                "Category": ["Tree", "Grass", "Weed"],
+                "Level": [today_row["tree"], today_row["grass"], today_row["weed"]],
+            })
+            fig_today = px.bar(cat_today, x="Category", y="Level", color="Category",
+                                title="Today's pollen level by category")
+            st.plotly_chart(fig_today, use_container_width=True)
+
+        st.markdown("#### Multi-day outlook")
+        trend_df = daily_df.melt(
+            id_vars=["date", "overall_risk"],
+            value_vars=["tree", "grass", "weed"],
+            var_name="Category", value_name="Level",
+        )
+        fig_trend = px.bar(trend_df, x="date", y="Level", color="Category",
+                            barmode="stack", title=f"Pollen forecast -- {selected_city}")
+        st.plotly_chart(fig_trend, use_container_width=True)
+
+        st.markdown("#### This week's top allergens")
+        top_df = pd.DataFrame(parsed["top_species"])
+        if not top_df.empty:
+            top_df = top_df.rename(columns={
+                "display_name": "Species", "category": "Category",
+                "value": f"Peak value ({parsed['units']})", "risk_level": "Risk level",
+            })[["Species", "Category", f"Peak value ({parsed['units']})", "Risk level"]]
+            st.dataframe(top_df, use_container_width=True, hide_index=True)
+    else:
+        st.caption("No live pollen data available right now for this city -- see "
+                   "the general seasonal pattern further down instead.")
+
+    st.divider()
+
+    # -- Existing honest MetService comparison (unchanged, still accurate) --
     st.markdown("#### Methodology comparison")
     comparison_table = pd.DataFrame([
-        {"Aspect": "What it predicts", "This project": "Air pollution risk (PM2.5/PM10/NO2 -> AQI category)",
+        {"Aspect": "What it predicts", "This project": "Air pollution risk (PM2.5/PM10/NO2 -> AQI category) + live species-level pollen (Atmospore)",
          "MetService": "Pollen/allergen risk (grass, tree, weed, fungal spore counts)"},
-        {"Aspect": "Data source", "This project": "Open public APIs (Open-Meteo, OpenAQ)",
+        {"Aspect": "Data source", "This project": "Open public APIs (Open-Meteo, OpenAQ, Atmospore)",
          "MetService": "In-house meteorologist forecasts + a real-time pollen API"},
-        {"Aspect": "Public API access", "This project": "Fully open, no cost, no key needed for weather",
+        {"Aspect": "Public API access", "This project": "Fully open; pollen via Atmospore's free tier (100 calls/day)",
          "MetService": "Pollen API is a licensed commercial product (used by advertisers, not public)"},
         {"Aspect": "Model transparency", "This project": "Open pipeline, explainability built in (see Explainability tab)",
          "MetService": "Not disclosed publicly"},
-        {"Aspect": "Geographic scope", "This project": "Any city with weather data (global)",
+        {"Aspect": "Geographic scope", "This project": "Any city worldwide (global weather + pollen coverage)",
          "MetService": "New Zealand only"},
-        {"Aspect": "Forecast horizon", "This project": "Up to 7 days ahead (Forecast tab)",
+        {"Aspect": "Forecast horizon", "This project": "Up to 7 days ahead (air quality) / up to 14 days (pollen)",
          "MetService": "Daily, in-season only (~34 weeks/year)"},
     ])
     st.dataframe(comparison_table, use_container_width=True, hide_index=True)
 
-    st.markdown("#### Why there's no live pollen data in this app")
+    st.markdown("#### Why this isn't MetService's own pollen feed")
     st.info(
-        "Two things were checked directly before deciding this: Open-Meteo's Air "
-        "Quality API does include pollen data, but it only covers Europe -- not "
-        "New Zealand or India. And MetService's real-time pollen feed is a "
-        "licensed commercial API (confirmed via a public case study of it being "
-        "used in an advertising campaign), not something freely available to "
-        "query. Rather than build a fragile, untested scraper against a page "
-        "that loads its data client-side, this comparison stays at the "
-        "methodology level -- which is also the more honest comparison, since "
-        "MetService's exact model isn't public either."
+        "MetService's real-time pollen feed is a licensed commercial API "
+        "(confirmed via a public case study of it being used in an "
+        "advertising campaign), not something freely queryable. The pollen "
+        "data above instead comes from Atmospore, an independent global "
+        "pollen-forecast model -- a genuinely different data source, not a "
+        "scrape or estimate of MetService's own numbers."
     )
 
-    st.markdown("#### General NZ pollen season pattern (for context, not live data)")
+    st.markdown("#### General NZ pollen season pattern (for context)")
     st.caption("Paraphrased from MetService's published pollen season description -- "
-               "a general calendar, not a real-time feed.")
+               "background context, separate from the live Atmospore data above.")
     season_table = pd.DataFrame([
         {"Period": "Jul - Aug", "Main pollen source": "Pine (Pinus)"},
         {"Period": "Aug - Sep", "Main pollen source": "Deciduous trees (oak, elm, birch), macrocarpa, hazelnut"},
@@ -543,7 +638,7 @@ with tab_allergy:
     if summary:
         st.write(
             f"For **{selected_city}** right now: mean AQI of **{summary['mean_aqi']:.1f}** "
-            f"across {summary['rows']} hourly readings -- a pollution-based risk signal "
-            "MetService's pollen forecast doesn't cover at all, and a genuinely "
-            "complementary (not competing) piece of environmental health information."
+            f"across {summary['rows']} hourly readings, plus the live pollen "
+            "outlook above -- two genuinely complementary environmental "
+            "health signals MetService's pollen forecast alone doesn't cover."
         )
