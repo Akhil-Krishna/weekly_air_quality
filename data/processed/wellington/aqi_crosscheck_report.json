@@ -1,0 +1,9 @@
+{
+  "city": "Wellington",
+  "sample_window": "2026-09-05 to 2026-09-19",
+  "n_hours_compared": 360,
+  "mean_absolute_error": 13.29,
+  "correlation": 0.357,
+  "mean_our_aqi": 24.2,
+  "mean_openmeteo_us_aqi": 33.8
+}

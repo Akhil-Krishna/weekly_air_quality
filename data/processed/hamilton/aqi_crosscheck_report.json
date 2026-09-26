@@ -1,0 +1,9 @@
+{
+  "city": "Hamilton",
+  "sample_window": "2026-09-05 to 2026-09-19",
+  "n_hours_compared": 360,
+  "mean_absolute_error": 12.91,
+  "correlation": 0.607,
+  "mean_our_aqi": 27.9,
+  "mean_openmeteo_us_aqi": 37.0
+}

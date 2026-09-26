@@ -1,0 +1,9 @@
+{
+  "city": "Dunedin",
+  "sample_window": "2026-09-05 to 2026-09-19",
+  "n_hours_compared": 360,
+  "mean_absolute_error": 13.1,
+  "correlation": 0.251,
+  "mean_our_aqi": 14.7,
+  "mean_openmeteo_us_aqi": 25.0
+}

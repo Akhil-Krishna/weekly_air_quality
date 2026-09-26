@@ -20,13 +20,14 @@ LATITUDE = 28.6139
 LONGITUDE = 77.2090
 
 # Registry of all cities the app can switch between (used by the Streamlit
-# city selector). Adding a city here does NOT fetch/train anything by
-# itself -- you still run the pipeline once per city via the 3 lines above.
-# This just lets the already-built app switch between cities that have
-# already been processed, without editing config.py or restarting.
 CITIES = {
     "Delhi": {"lat": 28.6139, "lon": 77.2090},
     "Auckland": {"lat": -36.8485, "lon": 174.7633},
+    # Added: NZ cities confirmed to have real OpenAQ ground station coverage
+    "Wellington": {"lat": -41.2866, "lon": 174.7756},
+    "Christchurch": {"lat": -43.5333, "lon": 172.6333},
+    "Hamilton": {"lat": -37.7833, "lon": 175.2833},
+    "Dunedin": {"lat": -45.8742, "lon": 170.5036},
 }
 OPENAQ_RADIUS_METERS = 25000  # search radius around the coordinates for OpenAQ stations
 OPENAQ_MAX_LOCATIONS = 6      # only pull the N nearest stations -- pulling all ~100 in a
@@ -35,8 +36,6 @@ OPENAQ_REQUEST_DELAY_SECONDS = 1.2  # pause between requests to stay under the r
 
 # ---------------------------------------------------------------------------
 # DATE RANGE for historical data collection
-# Open-Meteo archive data typically has a ~5 day lag before it's finalized,
-# so we end the historical window a week before "today".
 # ---------------------------------------------------------------------------
 HISTORY_MONTHS = 9  # 9 months train + we'll reserve the tail for testing
 _today = date.today()
