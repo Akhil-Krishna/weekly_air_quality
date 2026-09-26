@@ -39,8 +39,39 @@ def load_features():
 
 
 def chronological_split(df):
-    train = df[df["datetime"] < pd.Timestamp(config.SPLIT_DATE)].copy()
-    test = df[df["datetime"] >= pd.Timestamp(config.SPLIT_DATE)].copy()
+    """Chronological split: train on the earlier period, test on the most
+    recent period.
+    """
+    df = df.sort_values("datetime").reset_index(drop=True)
+    data_min, data_max = df["datetime"].min(), df["datetime"].max()
+
+    def _split_at(split_date):
+        return df[df["datetime"] < split_date].copy(), df[df["datetime"] >= split_date].copy()
+
+    split_date = pd.Timestamp(config.SPLIT_DATE)
+    train, test = _split_at(split_date)
+
+    if len(train) == 0 or len(test) == 0:
+        span_days = max((data_max - data_min).days, 1)
+        test_days = max(1, min(config.TEST_MONTHS * 30, int(span_days * 0.25)))
+        fallback_split = data_max - pd.Timedelta(days=test_days)
+        print(f"NOTE: global config.SPLIT_DATE ({config.SPLIT_DATE}) falls outside "
+              f"{config.CITY_NAME}'s own data range ({data_min.date()} to "
+              f"{data_max.date()}), which would leave an empty train or test set. "
+              f"Falling back to a split relative to {config.CITY_NAME}'s own data: "
+              f"last {test_days} days as test (split at {fallback_split.date()}).")
+        split_date = fallback_split
+        train, test = _split_at(split_date)
+
+    if len(test) == 0 or len(train) == 0:
+        # Last resort for very short collection windows: split by row count
+        # instead of by date.
+        n_test = max(1, int(len(df) * 0.2))
+        train, test = df.iloc[:-n_test].copy(), df.iloc[-n_test:].copy()
+        print(f"NOTE: still an empty train/test set after the data-relative "
+              f"fallback -- using a plain 80/20 row-count split instead "
+              f"({len(train)} train / {len(test)} test).")
+
     print(f"Train: {len(train)} rows ({train['datetime'].min()} to {train['datetime'].max()})")
     print(f"Test:  {len(test)} rows ({test['datetime'].min()} to {test['datetime'].max()})")
     return train, test
@@ -57,7 +88,10 @@ def report_class_balance(train, test):
     print("\n--- Class balance: TRAIN ---")
     print(train["risk_category"].value_counts(normalize=True).round(3))
     print("\n--- Class balance: TEST ---")
-    print(test["risk_category"].value_counts(normalize=True).round(3))
+    if len(test) > 0:
+        print(test["risk_category"].value_counts(normalize=True).round(3))
+    else:
+        print("(empty)")
 
 
 def train_and_evaluate(X_train, y_train, X_test, y_test, class_names):
@@ -128,6 +162,17 @@ def main():
               "period, in contrast to a high-variance city like Delhi. It's "
               "direct evidence for why a two-city comparison is worthwhile.")
         print(f"{'='*70}")
+        return
+
+    # Also guard against a train or test split that -- after all fallbacks --
+    # still ends up single-class only within that split (can happen with a
+    # very rare second class near the edge of the data).
+    if train_df["risk_category"].nunique() < 2:
+        print(f"\nNOTE: {config.CITY_NAME}'s TRAIN split contains only one risk "
+              "category even though the full dataset has more than one -- the "
+              "rare class(es) fall entirely in the test period. Model training "
+              "is skipped for this split rather than fit a model that can't "
+              "learn to distinguish classes it never saw.")
         return
 
     feature_cols = get_feature_columns(df)
