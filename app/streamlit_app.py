@@ -367,7 +367,13 @@ with tab_forecast:
             pollutant_feat_cols = [c for c in tail_pollutant_feats.columns if "_roll_" in c or "_lag_" in c]
             pollutant_feat_cols = [c for c in pollutant_feat_cols
                                     if any(p in c for p in pollutant_cols)]
-            last_known_pollutant_feats = tail_pollutant_feats[pollutant_feat_cols].dropna().iloc[-1]
+            last_known_pollutant_feats = (
+                tail_pollutant_feats[pollutant_feat_cols]
+                .ffill()
+                .iloc[-1]
+                .fillna(tail_pollutant_feats[pollutant_feat_cols].mean())
+                .fillna(0.0)
+            )
 
             fc_df = combined_weather[combined_weather["datetime"].isin(fc_weather["datetime"])].copy()
             for col, val in last_known_pollutant_feats.items():
