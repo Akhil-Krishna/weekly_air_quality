@@ -1,7 +1,13 @@
 """
 Central configuration for the Air Quality Risk Predictor.
 
-Change CITY_NAME / LATITUDE / LONGITUDE to target a different city.
+To target a different city, add it to the CITIES registry below (coordinates
+plus IANA timezone) and select it with the AQ_CITY environment variable, or
+just let run_pipeline.py do it:
+
+    python run_pipeline.py --city Delhi
+    python run_pipeline.py --all
+
 Everything downstream (data collection, training, app) reads from here.
 """
 
@@ -13,26 +19,85 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ---------------------------------------------------------------------------
-# CITY (default assumption: Delhi, India -- change these 3 lines for another city)
-# ---------------------------------------------------------------------------
-CITY_NAME = "Hamilton"
-LATITUDE = -37.7833
-LONGITUDE = 175.2833
-
-# Registry of all cities the app can switch between (used by the Streamlit
+# CITY REGISTRY -- every city the app can switch between.
+#
+# Every city carries its IANA timezone. All data is fetched, stored and joined
+# in UTC (see TIMEZONE_FETCH below); the timezone here is used only to derive
+# LOCAL-clock features (hour-of-day, day-of-week, season) at feature-engineering
+# time. Those features are only meaningful on a local clock -- "rush hour" and
+# "winter" are local concepts -- while the join key has to be a single global
+# clock or weather and pollution get silently misaligned.
 CITIES = {
-    "Delhi": {"lat": 28.6139, "lon": 77.2090},
-    "Auckland": {"lat": -36.8485, "lon": 174.7633},
-    # Added: NZ cities confirmed to have real OpenAQ ground station coverage
-    "Wellington": {"lat": -41.2866, "lon": 174.7756},
-    "Christchurch": {"lat": -43.5333, "lon": 172.6333},
-    "Hamilton": {"lat": -37.7833, "lon": 175.2833},
-    "Dunedin": {"lat": -45.8742, "lon": 170.5036},
+    "Delhi": {"lat": 28.6139, "lon": 77.2090, "tz": "Asia/Kolkata"},
+    "Auckland": {"lat": -36.8485, "lon": 174.7633, "tz": "Pacific/Auckland"},
+    # NZ cities. Ground-station availability varies and is NOT guaranteed:
+    # OpenAQ currently returns no stations at all near Wellington, and
+    # Hamilton's two stations stopped reporting on 2025-12-03. Both therefore
+    # fall back to Open-Meteo automatically (see OPENAQ_MIN_WINDOW_COVERAGE),
+    # and every row records which source was used in its "source" column.
+    "Wellington": {"lat": -41.2866, "lon": 174.7756, "tz": "Pacific/Auckland"},
+    "Christchurch": {"lat": -43.5333, "lon": 172.6333, "tz": "Pacific/Auckland"},
+    "Hamilton": {"lat": -37.7833, "lon": 175.2833, "tz": "Pacific/Auckland"},
+    "Dunedin": {"lat": -45.8742, "lon": 170.5036, "tz": "Pacific/Auckland"},
 }
+
+# Timezone requested from Open-Meteo. This MUST stay "UTC": OpenAQ reports in
+# UTC, and asking Open-Meteo for "auto" (city-local) time while OpenAQ reports
+# UTC made merge_clean.py inner-join two different clocks -- offsetting Delhi's
+# labels from its features by 5.5h and Auckland's by 12-13h (non-constant,
+# because NZ observes DST). Everything is fetched in UTC and converted to local
+# only for the time-of-day/season features.
+TIMEZONE_FETCH = "UTC"
+
+
+def city_timezone(city_name):
+    """IANA timezone for a city in CITIES; falls back to UTC if unregistered."""
+    return (CITIES.get(city_name) or {}).get("tz", "UTC")
+
+
+# ---------------------------------------------------------------------------
+# WHICH CITY this run targets.
+#
+# Set it with the AQ_CITY environment variable, or let run_pipeline.py do it:
+#     python run_pipeline.py --city Delhi
+#     python run_pipeline.py --all
+#
+# DEFAULT_CITY is the fallback when AQ_CITY is unset. Coordinates are read out
+# of CITIES above rather than kept in separate constants -- CITY_NAME, LATITUDE
+# and LONGITUDE used to be three independent values that had to be edited
+# together, so any slip pointed the fetchers at one city and wrote the results
+# into another city's folder.
+# ---------------------------------------------------------------------------
+DEFAULT_CITY = "Delhi"
+CITY_NAME = (os.environ.get("AQ_CITY") or DEFAULT_CITY).strip()
+
+if CITY_NAME not in CITIES:
+    raise SystemExit(
+        f"Unknown city {CITY_NAME!r}. Add it to the CITIES dict in config.py "
+        f"(with its lat/lon and IANA timezone) or pick one of: "
+        f"{', '.join(CITIES)}"
+    )
+
+LATITUDE = CITIES[CITY_NAME]["lat"]
+LONGITUDE = CITIES[CITY_NAME]["lon"]
+
 OPENAQ_RADIUS_METERS = 25000  # search radius around the coordinates for OpenAQ stations
 OPENAQ_MAX_LOCATIONS = 6      # only pull the N nearest stations -- pulling all ~100 in a
                               # dense city like Delhi triggers rate limits for no real benefit
 OPENAQ_REQUEST_DELAY_SECONDS = 1.2  # pause between requests to stay under the rate limit
+
+# When to stop trusting OpenAQ ground data for a city and fall back to the
+# model-based Open-Meteo source. "Is there a station nearby" turned out to be
+# the wrong question: Hamilton has two stations 0.7km and 2.7km away that both
+# stopped reporting on 2025-12-03, so the existence check passed while the city
+# got 2 months of a 12-month window -- a Historical tab stuck in 2025 and a
+# forecast resting on a 10-month-old pollution baseline.
+#
+# Both thresholds are checked, because they catch different failures: coverage
+# catches a station that reports sporadically, staleness catches one that
+# reported well and then died.
+OPENAQ_MIN_WINDOW_COVERAGE = 0.50  # fraction of the requested hours required
+OPENAQ_MAX_STALENESS_DAYS = 30     # how far behind END_DATE the last reading may be
 
 # ---------------------------------------------------------------------------
 # DATE RANGE for historical data collection
@@ -42,9 +107,17 @@ _today = date.today()
 END_DATE = _today - timedelta(days=7)
 START_DATE = END_DATE - timedelta(days=HISTORY_MONTHS * 30 + 90)  # ~9-12 months total
 
-# Chronological split point: last 3 months = test set
+# Chronological split: the most recent TEST_MONTHS of DATA (not of the wall
+# clock) are held out as the test set.
+#
+# There is deliberately no module-level SPLIT_DATE constant any more. One
+# derived from date.today() drifts every day the pipeline isn't re-run: once
+# the data was a few weeks old the "last 3 months" test window silently shrank
+# to 19 days, and later became empty entirely. The split is now computed from
+# df["datetime"].max() at train time (see src/utils.derive_split_date) and
+# persisted into model_comparison.json, so the app always reports the split the
+# saved model was actually trained with.
 TEST_MONTHS = 3
-SPLIT_DATE = END_DATE - timedelta(days=TEST_MONTHS * 30)
 
 # ---------------------------------------------------------------------------
 # API endpoints
@@ -75,6 +148,19 @@ ATMOSPORE_DAILY_CALL_BUDGET = 90
 # ---------------------------------------------------------------------------
 AQ_SOURCE_MODE = "auto"    
 RUN_AQI_CROSSCHECK = True  
+
+# Which EPA PM2.5 AQI breakpoint table labeling.py should use.
+#   "2024" -- EPA's 2024 revision (Good/Moderate boundary at 9.0 ug/m3)
+#   "2012" -- the pre-2024 table (boundary at 12.0 ug/m3)
+# The 2024 revision is current; "2012" exists only to reproduce results
+# generated before this was fixed. See src/labeling.py for both tables.
+PM25_BREAKPOINT_VERSION = "2024"
+
+# Physical-plausibility ceilings (ug/m3) used by merge_clean.py to null out
+# obvious sensor faults. These replaced IQR winsorizing, which both leaked
+# test-set statistics into cleaning and clipped away exactly the extreme tail
+# the Very Unhealthy / Hazardous classes depend on.
+POLLUTANT_SANITY_CEILINGS = {"pm25": 2000.0, "pm10": 3000.0, "no2": 1000.0}
 OPEN_METEO_AQ_HOURLY_VARS = ["pm2_5", "pm10", "nitrogen_dioxide", "us_aqi"]
 
 WEATHER_HOURLY_VARS = [
@@ -97,6 +183,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 CITY_SLUG = CITY_NAME.strip().lower().replace(" ", "_")
+TIMEZONE = city_timezone(CITY_NAME)
 
 DATA_RAW_DIR = os.path.join(BASE_DIR, "data", "raw", CITY_SLUG)
 DATA_PROCESSED_DIR = os.path.join(BASE_DIR, "data", "processed", CITY_SLUG)

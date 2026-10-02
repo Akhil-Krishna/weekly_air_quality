@@ -5,7 +5,10 @@ scikit-learn>=1.3.0
 xgboost>=2.0.0
 shap>=0.44.0
 joblib>=1.3.0
-streamlit>=1.30.0
+# 1.49 is the floor for the width="stretch" argument used in the app;
+# use_container_width is deprecated from that release onward.
+streamlit>=1.49.0
 plotly>=5.18.0
 python-dateutil>=2.8.2
-python-dotenv
+python-dotenv>=1.0.0
+pytest>=8.0.0

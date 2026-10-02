@@ -1,9 +1,31 @@
 {
   "city": "Wellington",
-  "sample_window": "2026-09-05 to 2026-09-19",
-  "n_hours_compared": 360,
-  "mean_absolute_error": 13.29,
-  "correlation": 0.357,
-  "mean_our_aqi": 24.2,
-  "mean_openmeteo_us_aqi": 33.8
+  "sample_window": "2026-09-11 to 2026-09-25",
+  "pm25_breakpoint_version": "2024",
+  "instantaneous": {
+    "comparison": "instantaneous",
+    "n_hours_compared": 360,
+    "mean_absolute_error": 10.85,
+    "mean_signed_error": -2.9,
+    "correlation": 0.549,
+    "share_ours_above_theirs": 0.336,
+    "share_violating_lower_bound": 0.156,
+    "max_excess_over_theirs": 33.7,
+    "mean_our_aqi": 30.3,
+    "mean_openmeteo_us_aqi": 33.2
+  },
+  "averaged_24h": {
+    "comparison": "trailing_24h_mean",
+    "n_hours_compared": 343,
+    "mean_absolute_error": 2.58,
+    "mean_signed_error": -2.04,
+    "correlation": 0.97,
+    "share_ours_above_theirs": 0.327,
+    "share_violating_lower_bound": 0.0,
+    "max_excess_over_theirs": 2.7,
+    "mean_our_aqi": 31.5,
+    "mean_openmeteo_us_aqi": 33.5
+  },
+  "note": "Two expected differences, neither of them a defect. (1) EPA PM breakpoints are defined over 24-hour averages: the instantaneous comparison applies them to single hourly readings, which is what the pipeline labels on, and differs from Open-Meteo's NowCast-averaged us_aqi. (2) us_aqi is the max over roughly six pollutant sub-indices (PM2.5, PM10, NO2, O3, SO2, CO) while labeling.py takes the max over the three this project collects, so our AQI is a lower bound on theirs. The verdict therefore keys on correlation of the averaged comparison, and on the sign of the difference, not on its magnitude.",
+  "verdict": "consistent"
 }

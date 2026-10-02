@@ -2,3 +2,4 @@
 __pycache__
 .env
 data/processed/_pollen_cache/
+output.md

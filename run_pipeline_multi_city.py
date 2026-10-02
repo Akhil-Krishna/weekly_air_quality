@@ -1,3 +1,18 @@
+"""Multi-city pipeline driver (superseded).
+
+run_pipeline.py now does this directly:
+
+    python run_pipeline.py --all
+    python run_pipeline.py --city Wellington
+
+It runs each city in its own subprocess with AQ_CITY set, so config.py resolves
+that city at import time and derives every path from it once. This file instead
+reassigns roughly a dozen config attributes after import -- it still works, but
+it is a second place that has to be updated whenever config.py gains a
+city-dependent value, and it already misses config.TIMEZONE. Kept so existing
+notes and commands referring to it keep running.
+"""
+
 
 
 import sys

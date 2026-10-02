@@ -1,4 +1,9 @@
+"""Open-Meteo Air Quality fallback source (model/satellite-based CAMS data).
 
+Used when no OpenAQ ground station is near the target city. Like
+fetch_weather.py, all timestamps are requested in UTC so the merge key stays a
+single clock across every source.
+"""
 
 import sys
 import os
@@ -28,7 +33,7 @@ def fetch_air_quality_openmeteo_history(lat, lon, start_date, end_date, hourly_v
             "start_date": chunk_start.isoformat(),
             "end_date": chunk_end.isoformat(),
             "hourly": ",".join(hourly_vars),
-            "timezone": "auto",
+            "timezone": config.TIMEZONE_FETCH,
         }
         data = get_json_with_retries(config.OPEN_METEO_AQ_URL, params=params)
         hourly = data.get("hourly", {})
@@ -60,7 +65,7 @@ def fetch_air_quality_openmeteo_forecast(lat, lon, hourly_vars, forecast_days=5)
         "longitude": lon,
         "hourly": ",".join(hourly_vars),
         "forecast_days": forecast_days,
-        "timezone": "auto",
+        "timezone": config.TIMEZONE_FETCH,
     }
     data = get_json_with_retries(config.OPEN_METEO_AQ_URL, params=params)
     hourly = data.get("hourly", {})

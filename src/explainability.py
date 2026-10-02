@@ -17,6 +17,35 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 
 
+def unwrap_model(model):
+    """The underlying library estimator, for tools that introspect internals.
+
+    XGBoost is wrapped in ContiguousLabelClassifier so a risk category missing
+    from the train split cannot crash the fit. SHAP inspects the model object
+    directly and does not know about the wrapper, so it gets the inner one.
+    """
+    return getattr(model, "inner_model", model)
+
+
+def to_dense_class_index(model, class_idx):
+    """Translate a canonical label code into the index the inner model uses.
+
+    The wrapper fits on a dense 0..k-1 relabelling of whatever classes appear
+    in the train split, so a SHAP output axis of length k is indexed by the
+    dense position, not by the project-wide severity code.
+    """
+    train_classes = getattr(model, "train_classes_", None)
+    if train_classes is None:
+        return class_idx
+    matches = [i for i, c in enumerate(train_classes) if int(c) == int(class_idx)]
+    if not matches:
+        raise RuntimeError(
+            f"Class {class_idx} was never seen during training, so there is no "
+            "SHAP output for it."
+        )
+    return matches[0]
+
+
 def load_artifacts():
     model = joblib.load(config.BEST_MODEL_PATH)
     scaler = joblib.load(config.SCALER_PATH)
@@ -32,6 +61,7 @@ def global_feature_importance(model, feature_cols, top_n=15):
     Works for tree models (RandomForest, XGBoost) via feature_importances_.
     For LogisticRegression, uses mean absolute coefficient across classes.
     """
+    model = unwrap_model(model)
     if hasattr(model, "feature_importances_"):
         importances = model.feature_importances_
     elif hasattr(model, "coef_"):
@@ -67,6 +97,8 @@ def explain_single_prediction(model, X_instance_scaled, feature_cols, predicted_
     """
     import shap
 
+    predicted_class_idx = to_dense_class_index(model, predicted_class_idx)
+    model = unwrap_model(model)
     model_type = type(model).__name__
     if model_type not in ("RandomForestClassifier", "XGBClassifier", "GradientBoostingClassifier"):
         raise RuntimeError(
